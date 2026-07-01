@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Apply Leave{% endblock %}
+{% block page_title %}Apply Leave{% endblock %}
+
+{% block content %}
+<section class="panel">
+    <form action="/submit_leave" method="POST" class="form-grid">
+        <label>
+            Leave Type
+            <select name="leave_type" required>
+                <option value="CL">Casual Leave</option>
+                <option value="SL">Sick Leave</option>
+                <option value="LWP">Leave Without Pay</option>
+            </select>
+        </label>
+
+        <label>
+            From Date
+            <input type="date" name="from_date" required>
+        </label>
+
+        <label>
+            To Date
+            <input type="date" name="to_date" required>
+        </label>
+
+        <label class="full-width">
+            Reason
+            <textarea name="reason" rows="4" required></textarea>
+        </label>
+
+        <div class="button-row full-width">
+            <button type="submit">Submit Request</button>
+            <a class="button secondary" href="/dashboard">Cancel</a>
+        </div>
+    </form>
+</section>
+{% endblock %}
