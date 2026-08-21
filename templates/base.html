@@ -20,11 +20,13 @@
             <a href="/dashboard">Dashboard</a>
             <a href="/leave">Apply Leave</a>
             <a href="/my_leaves">My Leaves</a>
+            <a href="/my_salary_slips">My Salary Slips</a>
             <a href="/holidays">Holidays</a>
             {% if session.get("is_admin") %}
             <a href="/admin_employees">Employees</a>
             <a href="/admin_leaves">Leave Requests</a>
             <a href="/admin_holidays">Manage Holidays</a>
+            <a href="/admin_payroll">Payroll</a>
             {% endif %}
             <a class="danger-link" href="/logout">Logout</a>
         </nav>

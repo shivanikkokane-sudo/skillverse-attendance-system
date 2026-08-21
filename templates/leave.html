@@ -16,6 +16,14 @@
         </label>
 
         <label>
+            Duration
+            <select name="leave_duration" id="leaveDuration" required>
+                <option value="full_day">Full Day</option>
+                <option value="half_day">Half Day</option>
+            </select>
+        </label>
+
+        <label>
             From Date
             <input type="date" name="from_date" required>
         </label>
@@ -36,4 +44,21 @@
         </div>
     </form>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const duration = document.getElementById("leaveDuration");
+const fromDate = document.querySelector('[name="from_date"]');
+const toDate = document.querySelector('[name="to_date"]');
+
+function syncHalfDayDate() {
+    const halfDay = duration.value === "half_day";
+    if (halfDay && fromDate.value) toDate.value = fromDate.value;
+    toDate.readOnly = halfDay;
+}
+
+duration.addEventListener("change", syncHalfDayDate);
+fromDate.addEventListener("change", syncHalfDayDate);
+</script>
 {% endblock %}

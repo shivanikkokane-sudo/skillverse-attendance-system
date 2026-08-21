@@ -350,7 +350,8 @@ def apply_leave(
     leave_type,
     from_date,
     to_date,
-    reason
+    reason,
+    day_fraction=1
 ):
 
     response = (
@@ -368,6 +369,8 @@ def apply_leave(
             "to_date": to_date,
 
             "reason": reason,
+
+            "day_fraction": day_fraction,
 
             "status": "Pending"
 
@@ -708,9 +711,11 @@ def get_leave_days_in_year(
 
         return 0
 
-    return (
+    days = (
         end - start
     ).days + 1
+
+    return days * float(leave.get("day_fraction") or 1)
 
 
 def get_leave_balance(employee_id):
@@ -945,3 +950,112 @@ def get_attendance_report(
     )
 
     return response.data
+
+
+def get_payroll_source_data(from_date, to_date):
+    employees = (
+        supabase.table("employees")
+        .select("*")
+        .lte("joining_date", to_date)
+        .order("full_name")
+        .execute().data
+    )
+    attendance = (
+        supabase.table("attendance")
+        .select("*")
+        .gte("attendance_date", from_date)
+        .lte("attendance_date", to_date)
+        .execute().data
+    )
+    leaves = (
+        supabase.table("leave_requests")
+        .select("*")
+        .lte("from_date", to_date)
+        .gte("to_date", from_date)
+        .execute().data
+    )
+    holidays = (
+        supabase.table("holidays")
+        .select("*")
+        .eq("is_active", True)
+        .gte("holiday_date", from_date)
+        .lte("holiday_date", to_date)
+        .execute().data
+    )
+    return employees, attendance, leaves, holidays
+
+
+def update_employee_salary(employee_id, monthly_salary):
+    return (
+        supabase.table("employees")
+        .update({"salary": monthly_salary})
+        .eq("id", employee_id)
+        .execute()
+    )
+
+
+def resolve_payroll_day(employee_id, attendance_date, resolution):
+    status_map = {
+        "full_day": ("Admin Full Day", 8),
+        "half_day": ("Admin Half Day", 4),
+        "paid_leave": ("Admin Paid Leave", 0),
+        "unpaid_leave": ("Admin Unpaid Leave", 0),
+    }
+    if resolution not in status_map:
+        raise ValueError("Invalid payroll resolution")
+    status, total_hours = status_map[resolution]
+    existing = (
+        supabase.table("attendance").select("id")
+        .eq("employee_id", employee_id)
+        .eq("attendance_date", attendance_date)
+        .execute().data
+    )
+    values = {"status": status, "total_hours": total_hours}
+    if existing:
+        return (
+            supabase.table("attendance").update(values)
+            .eq("id", existing[0]["id"]).execute()
+        )
+    values.update({"employee_id": employee_id, "attendance_date": attendance_date})
+    return supabase.table("attendance").insert(values).execute()
+
+
+def save_salary_slip(values):
+    existing = (
+        supabase.table("salary_slips").select("id")
+        .eq("employee_id", values["employee_id"])
+        .eq("payroll_month", values["payroll_month"])
+        .execute().data
+    )
+    if existing:
+        return (
+            supabase.table("salary_slips").update(values)
+            .eq("id", existing[0]["id"]).execute().data[0]
+        )
+    return supabase.table("salary_slips").insert(values).execute().data[0]
+
+
+def get_employee_salary_slips(employee_id):
+    return (
+        supabase.table("salary_slips").select("*")
+        .eq("employee_id", employee_id)
+        .order("payroll_month", desc=True).execute().data
+    )
+
+
+def get_salary_slips_for_month(payroll_month):
+    return (
+        supabase.table("salary_slips")
+        .select("id, employee_id, payroll_month, net_salary, generated_at")
+        .eq("payroll_month", payroll_month)
+        .execute().data
+    )
+
+
+def get_salary_slip(slip_id):
+    response = (
+        supabase.table("salary_slips")
+        .select("*, employees!salary_slips_employee_id_fkey(full_name, designation, centre)")
+        .eq("id", slip_id).execute().data
+    )
+    return response[0] if response else None

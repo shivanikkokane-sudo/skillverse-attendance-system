@@ -14,6 +14,7 @@
                     <th>Type</th>
                     <th>From</th>
                     <th>To</th>
+                    <th>Duration</th>
                     <th>Status</th>
                     <th>Action</th>
                 </tr>
@@ -26,6 +27,7 @@
                     <td>{{ leave.leave_type }}</td>
                     <td>{{ leave.from_date }}</td>
                     <td>{{ leave.to_date }}</td>
+                    <td>{% if leave.get("day_fraction", 1)|float == 0.5 %}Half Day{% else %}Full Day{% endif %}</td>
                     <td><span class="status">{{ leave.status }}</span></td>
                     <td>
                         {% if leave.status == "Pending" %}
@@ -44,7 +46,7 @@
                 </tr>
                 {% else %}
                 <tr>
-                    <td colspan="7" class="empty-state">No leave requests found.</td>
+                    <td colspan="8" class="empty-state">No leave requests found.</td>
                 </tr>
                 {% endfor %}
             </tbody>

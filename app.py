@@ -6,13 +6,15 @@ from flask import (
     render_template,
     request,
     redirect,
-    session
+    session,
+    send_file
 )
 
 import os
 
 
-from datetime import date
+from datetime import date, timedelta
+import calendar
 from database import (
     supabase,
     login_employee,
@@ -42,8 +44,17 @@ from database import (
     deactivate_holiday,
     activate_holiday,
     get_active_holidays,
-    get_attendance_report
+    get_attendance_report,
+    get_payroll_source_data,
+    update_employee_salary,
+    resolve_payroll_day,
+    save_salary_slip,
+    get_employee_salary_slips,
+    get_salary_slips_for_month,
+    get_salary_slip
 )
+from payroll import build_monthly_payroll
+from salary_pdf import create_salary_slip_pdf
 
 app = Flask(__name__)
 app.secret_key = os.getenv(
@@ -326,6 +337,13 @@ def submit_leave():
         request.form["leave_type"]
     )
 
+    leave_duration = request.form.get(
+        "leave_duration", "full_day"
+    )
+
+    if leave_duration not in {"full_day", "half_day"}:
+        return "Invalid leave duration", 400
+
     from_date = (
         request.form["from_date"]
     )
@@ -348,11 +366,17 @@ def submit_leave():
             "To Date cannot be before From Date"
         )
 
+    if leave_duration == "half_day" and from_date_value != to_date_value:
+        return "Half-day leave must be for a single date", 400
+
+    day_fraction = 0.5 if leave_duration == "half_day" else 1
+
     leave_days = (
         get_leave_days_in_year(
             {
                 "from_date": from_date,
-                "to_date": to_date
+                "to_date": to_date,
+                "day_fraction": day_fraction
             },
             date.today().year
         )
@@ -404,7 +428,9 @@ def submit_leave():
 
         to_date,
 
-        reason
+        reason,
+
+        day_fraction
     )
 
     return """
@@ -811,6 +837,152 @@ def admin_attendance():
         attendance=attendance,
         from_date=from_date,
         to_date=to_date
+    )
+
+
+@app.route("/admin_payroll")
+def admin_payroll():
+    if "employee_id" not in session:
+        return redirect("/")
+    if not session.get("is_admin"):
+        return "Access Denied", 403
+
+    default_month = date.today().replace(day=1) - timedelta(days=1)
+    month_value = request.args.get("month", default_month.strftime("%Y-%m"))
+    try:
+        year, month = (int(part) for part in month_value.split("-"))
+        month_start = date(year, month, 1)
+    except (TypeError, ValueError):
+        return "Invalid payroll month", 400
+    month_end = date(year, month, calendar.monthrange(year, month)[1])
+    if month_end >= date.today():
+        return "Salary slips can only be generated after the selected month has ended", 400
+
+    employees, attendance, leaves, holidays = get_payroll_source_data(
+        month_start.isoformat(), month_end.isoformat()
+    )
+    payroll = build_monthly_payroll(year, month, employees, attendance, leaves, holidays)
+    saved_slips = get_salary_slips_for_month(month_start.isoformat())
+    saved_by_employee = {str(item["employee_id"]): item for item in saved_slips}
+    for item in payroll:
+        item["saved_slip"] = saved_by_employee.get(str(item["employee"]["id"]))
+    return render_template(
+        "admin_payroll.html",
+        payroll=payroll,
+        month=month_value,
+        month_label=month_start.strftime("%B %Y"),
+        has_warnings=any(item["warnings"] for item in payroll),
+        print_mode=request.args.get("print") == "1",
+        saved=request.args.get("saved") == "1",
+    )
+
+
+@app.route("/update_employee_salary/<int:employee_id>", methods=["POST"])
+def update_employee_salary_route(employee_id):
+    if "employee_id" not in session:
+        return redirect("/")
+    if not session.get("is_admin"):
+        return "Access Denied", 403
+    try:
+        monthly_salary = round(float(request.form["monthly_salary"]), 2)
+        if monthly_salary < 0:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        return "Monthly salary must be a non-negative number", 400
+    update_employee_salary(employee_id, monthly_salary)
+    return redirect("/admin_payroll?month=" + request.form.get("month", ""))
+
+
+@app.route("/resolve_payroll_day", methods=["POST"])
+def resolve_payroll_day_route():
+    if "employee_id" not in session:
+        return redirect("/")
+    if not session.get("is_admin"):
+        return "Access Denied", 403
+    try:
+        employee_id = int(request.form["employee_id"])
+        attendance_date = date.fromisoformat(request.form["attendance_date"])
+        resolution = request.form["resolution"]
+        if attendance_date >= date.today():
+            return "Only past attendance dates can be corrected", 400
+        resolve_payroll_day(employee_id, attendance_date.isoformat(), resolution)
+    except (KeyError, TypeError, ValueError):
+        return "Invalid attendance correction", 400
+    return redirect("/admin_payroll?month=" + request.form.get("month", ""))
+
+
+@app.route("/finalize_salary_slip/<int:employee_id>", methods=["POST"])
+def finalize_salary_slip(employee_id):
+    if "employee_id" not in session:
+        return redirect("/")
+    if not session.get("is_admin"):
+        return "Access Denied", 403
+    try:
+        month_value = request.form["month"]
+        year, month = (int(part) for part in month_value.split("-"))
+        month_start = date(year, month, 1)
+        month_end = date(year, month, calendar.monthrange(year, month)[1])
+        if month_end >= date.today():
+            return "Salary slips can only be saved after the month has ended", 400
+    except (KeyError, TypeError, ValueError):
+        return "Invalid payroll month", 400
+
+    employees, attendance, leaves, holidays = get_payroll_source_data(
+        month_start.isoformat(), month_end.isoformat()
+    )
+    payroll = build_monthly_payroll(year, month, employees, attendance, leaves, holidays)
+    slip = next(
+        (item for item in payroll if str(item["employee"]["id"]) == str(employee_id)),
+        None,
+    )
+    if not slip:
+        return "Employee is not eligible for this payroll month", 404
+    if not slip["can_finalize"]:
+        return "Resolve all missing attendance and salary warnings before saving this slip", 400
+    save_salary_slip({
+        "employee_id": employee_id,
+        "payroll_month": month_start.isoformat(),
+        "standard_salary": float(slip["monthly_salary"]),
+        "gross_salary": float(slip["prorated_gross"]),
+        "month_working_days": slip["month_working_days"],
+        "working_days": slip["working_days"],
+        "present_days": slip["present_days"],
+        "cl_days": slip["cl_days"],
+        "sl_days": slip["sl_days"],
+        "paid_leave_days": slip["paid_leave_days"],
+        "half_days": slip["half_days"],
+        "unpaid_days": float(slip["deduction_days"]),
+        "deduction": float(slip["deduction"]),
+        "net_salary": float(slip["net_salary"]),
+        "leave_details": slip["approved_leave_details"],
+        "generated_by": session["employee_id"],
+    })
+    return redirect(f"/admin_payroll?month={month_value}&saved=1")
+
+
+@app.route("/my_salary_slips")
+def my_salary_slips():
+    if "employee_id" not in session:
+        return redirect("/")
+    slips = get_employee_salary_slips(session["employee_id"])
+    return render_template("my_salary_slips.html", slips=slips)
+
+
+@app.route("/salary_slip/<int:slip_id>/download")
+def download_salary_slip(slip_id):
+    if "employee_id" not in session:
+        return redirect("/")
+    slip = get_salary_slip(slip_id)
+    if not slip:
+        return "Salary slip not found", 404
+    if not session.get("is_admin") and str(slip["employee_id"]) != str(session["employee_id"]):
+        return "Access Denied", 403
+    pdf = create_salary_slip_pdf(slip)
+    return send_file(
+        pdf,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"salary-slip-{slip['payroll_month']}.pdf",
     )
 
 
