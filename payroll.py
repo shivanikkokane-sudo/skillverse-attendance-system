@@ -119,6 +119,7 @@ def build_monthly_payroll(year, month, employees, attendance, leaves, holidays):
             elif row.get("status") == "Admin Paid Leave":
                 summary["paid_leave_days"] += 1
             elif row.get("status") == "Admin Unpaid Leave":
+                summary["lwp_days"] += 1
                 summary["resolved_unpaid_leave_days"] += 1
             elif not row.get("punch_in") or not row.get("punch_out"):
                 summary["missing_punches"].append(current.isoformat())
