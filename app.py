@@ -52,7 +52,8 @@ from database import (
     get_employee_salary_slips,
     get_salary_slips_for_month,
     get_salary_slip,
-    get_employee_month_attendance
+    get_employee_month_attendance,
+    get_admin_leave_summary
 )
 from payroll import build_monthly_payroll
 from salary_pdf import create_salary_slip_pdf
@@ -457,6 +458,26 @@ def admin_leaves():
     return render_template(
         "admin_leaves.html",
         leaves=leaves
+    )
+
+
+@app.route("/admin_leave_summary")
+def admin_leave_summary():
+    if "employee_id" not in session:
+        return redirect("/")
+    if not session.get("is_admin"):
+        return "Access Denied", 403
+    try:
+        year = int(request.args.get("year", date.today().year))
+        if year < 2000 or year > date.today().year:
+            raise ValueError
+    except (TypeError, ValueError):
+        return "Invalid leave summary year", 400
+    return render_template(
+        "admin_leave_summary.html",
+        summaries=get_admin_leave_summary(year),
+        selected_year=year,
+        current_year=date.today().year,
     )
 
 @app.route("/admin_holidays")

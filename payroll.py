@@ -70,6 +70,7 @@ def build_monthly_payroll(year, month, employees, attendance, leaves, holidays):
             "paid_leave_days": 0,
             "cl_days": 0,
             "sl_days": 0,
+            "lwp_days": 0,
             "approved_leave_details": [],
             "half_days": 0,
             "unauthorized_absences": [],
@@ -91,11 +92,17 @@ def build_monthly_payroll(year, month, employees, attendance, leaves, holidays):
                 leave = employee_leaves[current]
                 leave_type = leave["leave_type"]
                 day_fraction = leave["day_fraction"]
-                summary["paid_leave_days"] += day_fraction
                 if leave_type == "CL":
+                    summary["paid_leave_days"] += day_fraction
                     summary["cl_days"] += day_fraction
                 elif leave_type == "SL":
+                    summary["paid_leave_days"] += day_fraction
                     summary["sl_days"] += day_fraction
+                elif leave_type == "LWP":
+                    summary["lwp_days"] += day_fraction
+                    summary["resolved_unpaid_leave_days"] += day_fraction
+                else:
+                    summary["paid_leave_days"] += day_fraction
                 summary["approved_leave_details"].append(
                     {
                         "date": current.isoformat(),
