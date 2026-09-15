@@ -47,7 +47,8 @@
             <input type="hidden" name="attendance_date" value="{{ flagged_date }}">
             <input type="hidden" name="month" value="{{ month }}">
             <select name="resolution" required>
-                <option value="">Mark day as...</option><option value="full_day">Full Day</option>
+                <option value="">Mark day as...</option><option value="present">Present</option>
+                <option value="full_day">Full Day</option>
                 <option value="half_day">Half Day</option><option value="paid_leave">Paid Leave</option>
                 <option value="unpaid_leave">Unpaid Leave</option>
             </select><button type="submit">Save</button>
@@ -60,7 +61,8 @@
             <input type="hidden" name="attendance_date" value="{{ flagged_date }}">
             <input type="hidden" name="month" value="{{ month }}">
             <select name="resolution" required>
-                <option value="">Mark day as...</option><option value="full_day">Full Day</option>
+                <option value="">Mark day as...</option><option value="present">Present</option>
+                <option value="full_day">Full Day</option>
                 <option value="half_day">Half Day</option><option value="paid_leave">Paid Leave</option>
                 <option value="unpaid_leave">Unpaid Leave</option>
             </select><button type="submit">Save</button>

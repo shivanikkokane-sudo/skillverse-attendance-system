@@ -1050,6 +1050,7 @@ def update_employee_salary(employee_id, monthly_salary):
 
 def resolve_payroll_day(employee_id, attendance_date, resolution):
     status_map = {
+        "present": ("Admin Full Day", 8),
         "full_day": ("Admin Full Day", 8),
         "half_day": ("Admin Half Day", 4),
         "paid_leave": ("Admin Paid Leave", 0),
